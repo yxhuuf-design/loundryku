@@ -1,13 +1,15 @@
+
 import os
+from functools import wraps
+from decimal import Decimal, InvalidOperation
+from datetime import date
+
 from dotenv import load_dotenv
+from flask import Flask, render_template, request, redirect, url_for, flash, session
+from werkzeug.security import generate_password_hash
 
 load_dotenv()
 
-from flask import Flask, render_template, request, redirect, url_for, flash, session
-from functools import wraps
-from decimal import Decimal, InvalidOperation
-from werkzeug.security import generate_password_hash
-from datetime import date
 import models
 from database import get_connection
 
@@ -25,9 +27,6 @@ def login_required(fn):
 
 
 def init_db():
-    conn = get_connection()
-    cur = conn.cursor()
-
     sql = [
         """CREATE TABLE IF NOT EXISTS users (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -73,6 +72,9 @@ def init_db():
         ) ENGINE=InnoDB"""
     ]
 
+    conn = get_connection()
+    cur = conn.cursor()
+
     try:
         for statement in sql:
             cur.execute(statement)
@@ -81,13 +83,22 @@ def init_db():
         cur.close()
         conn.close()
 
+    admin_username = os.getenv("ADMIN_USERNAME", "admin")
+    admin_password = os.getenv("ADMIN_PASSWORD", "admin123")
+
     if not models.one_row(
         "SELECT id FROM users WHERE username=%s",
-        ("admin",)
+        (admin_username,)
     ):
         models.run(
-            "INSERT INTO users(username,password_hash,nama) VALUES(%s,%s,%s)",
-            ("admin", generate_password_hash("admin123"), "Administrator")
+            """INSERT INTO users
+            (username, password_hash, nama)
+            VALUES (%s, %s, %s)""",
+            (
+                admin_username,
+                generate_password_hash(admin_password),
+                "Administrator"
+            )
         )
 
     if not models.one_row("SELECT id FROM layanan LIMIT 1"):
@@ -98,10 +109,14 @@ def init_db():
         ]:
             models.run(
                 """INSERT INTO layanan
-                (nama_layanan,harga_per_kg,estimasi_hari,keterangan)
-                VALUES(%s,%s,%s,%s)""",
+                (nama_layanan, harga_per_kg, estimasi_hari, keterangan)
+                VALUES (%s, %s, %s, %s)""",
                 item
             )
+
+
+# Inisialisasi database
+init_db()
 
 
 @app.context_processor
@@ -154,8 +169,8 @@ def pelanggan():
         else:
             models.run(
                 """INSERT INTO pelanggan
-                (nama,no_hp,email,alamat)
-                VALUES(%s,%s,%s,%s)""",
+                (nama, no_hp, email, alamat)
+                VALUES (%s, %s, %s, %s)""",
                 (
                     nama,
                     request.form.get("no_hp", ""),
@@ -205,8 +220,8 @@ def layanan():
 
             models.run(
                 """INSERT INTO layanan
-                (nama_layanan,harga_per_kg,estimasi_hari,keterangan)
-                VALUES(%s,%s,%s,%s)""",
+                (nama_layanan, harga_per_kg, estimasi_hari, keterangan)
+                VALUES (%s, %s, %s, %s)""",
                 (
                     nama,
                     harga,
@@ -232,10 +247,17 @@ def layanan():
 @login_required
 def hapus_layanan(id):
     try:
-        models.run("DELETE FROM layanan WHERE id=%s", (id,))
+        models.run(
+            "DELETE FROM layanan WHERE id=%s",
+            (id,)
+        )
         flash("Layanan dihapus.", "success")
     except Exception:
-        flash("Layanan sudah dipakai transaksi sehingga tidak dapat dihapus.", "danger")
+        flash(
+            "Layanan sudah dipakai transaksi sehingga tidak dapat dihapus.",
+            "danger"
+        )
+
     return redirect(url_for("layanan"))
 
 
@@ -250,23 +272,34 @@ def transaksi():
             berat = Decimal(request.form["berat_kg"])
 
             service = models.one_row(
-                "SELECT * FROM layanan WHERE id=%s", (lid,)
+                "SELECT * FROM layanan WHERE id=%s",
+                (lid,)
             )
 
-            if not service or berat <= 0:
+            pelanggan_ada = models.one_row(
+                "SELECT id FROM pelanggan WHERE id=%s",
+                (pid,)
+            )
+
+            if not service or not pelanggan_ada or berat <= 0:
                 raise ValueError()
 
             harga = Decimal(str(service["harga_per_kg"]))
 
-            models.run("""
-                INSERT INTO transaksi
+            models.run(
+                """INSERT INTO transaksi
                 (pelanggan_id, layanan_id, berat_kg,
                  harga_per_kg, total_harga, status, catatan)
-                VALUES (%s, %s, %s, %s, %s, 'Menunggu', %s)
-            """, (
-                pid, lid, berat, harga, berat * harga,
-                request.form.get("catatan", "")
-            ))
+                VALUES (%s, %s, %s, %s, %s, 'Menunggu', %s)""",
+                (
+                    pid,
+                    lid,
+                    berat,
+                    harga,
+                    berat * harga,
+                    request.form.get("catatan", "")
+                )
+            )
 
             flash("Transaksi berhasil disimpan.", "success")
 
@@ -287,8 +320,8 @@ def transaksi():
 @app.route("/transaksi/nota/<int:id>")
 @login_required
 def cetak_nota(id):
-    nota = models.one_row("""
-        SELECT
+    nota = models.one_row(
+        """SELECT
             t.id,
             t.tanggal,
             t.berat_kg,
@@ -303,8 +336,9 @@ def cetak_nota(id):
         FROM transaksi t
         JOIN pelanggan p ON p.id = t.pelanggan_id
         JOIN layanan l ON l.id = t.layanan_id
-        WHERE t.id = %s
-    """, (id,))
+        WHERE t.id = %s""",
+        (id,)
+    )
 
     if not nota:
         flash("Transaksi tidak ditemukan.", "danger")
@@ -319,7 +353,12 @@ def cetak_nota(id):
 def status_transaksi(id):
     status = request.form.get("status")
 
-    if status not in ["Menunggu", "Diproses", "Selesai", "Diambil"]:
+    if status not in [
+        "Menunggu",
+        "Diproses",
+        "Selesai",
+        "Diambil"
+    ]:
         flash("Status tidak valid.", "danger")
     else:
         models.run(
@@ -349,21 +388,14 @@ def laporan():
 
 
 if __name__ == "__main__":
-    try:
-        init_db()
+    port = int(os.environ.get("PORT", 5000))
 
-        print("Database berhasil diperiksa.")
-        print("Login awal: admin / admin123")
-        print("Aplikasi berjalan di http://127.0.0.1:5000")
+    print("Database berhasil diperiksa.")
+    print("Login awal: admin / admin123")
+    print(f"Aplikasi berjalan pada port {port}.")
 
-        app.run(
-            host="127.0.0.1",
-            port=5000,
-            debug=True,
-            use_reloader=False
-        )
-
-    except Exception as e:
-        print("ERROR APLIKASI:", repr(e))
-        raise
-
+    app.run(
+        host="0.0.0.0",
+        port=port,
+        debug=os.getenv("FLASK_DEBUG", "false").lower() == "true"
+    )
