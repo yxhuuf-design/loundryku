@@ -1,0 +1,6 @@
+{% extends "base.html" %}{% block title %}Layanan{% endblock %}{% block content %}
+<h1>Jenis Layanan</h1><div class="panel"><h2>Tambah Layanan</h2><form method="post" class="grid">
+<div><label>Nama layanan *</label><input name="nama_layanan" required></div><div><label>Harga per kg *</label><input type="number" min="1" step="1" name="harga_per_kg" required></div>
+<div><label>Estimasi hari</label><input type="number" min="1" name="estimasi_hari" value="3" required></div><div><label>Keterangan</label><input name="keterangan"></div><div><button class="btn primary">Simpan Layanan</button></div></form></div>
+<div class="panel"><h2>Daftar Layanan</h2><div class="scroll"><table><tr><th>ID</th><th>Layanan</th><th>Harga/kg</th><th>Estimasi</th><th>Keterangan</th><th>Aksi</th></tr>
+{% for l in layanan %}<tr><td>{{ l.id }}</td><td>{{ l.nama_layanan }}</td><td>Rp {{ "{:,.0f}".format(l.harga_per_kg) }}</td><td>{{ l.estimasi_hari }} hari</td><td>{{ l.keterangan or '-' }}</td><td><form method="post" action="{{ url_for('hapus_layanan',id=l.id) }}" onsubmit="return confirm('Hapus layanan?')"><button class="btn danger">Hapus</button></form></td></tr>{% else %}<tr><td colspan="6">Belum ada layanan.</td></tr>{% endfor %}</table></div></div>{% endblock %}
