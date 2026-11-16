@@ -1,5 +1,0 @@
-{% extends "base.html" %}{% block title %}Laporan{% endblock %}{% block content %}
-<h1>Laporan Pendapatan</h1><div class="panel"><form class="filter" method="get"><div><label>Dari tanggal</label><input type="date" name="mulai" value="{{ mulai }}"></div><div><label>Sampai tanggal</label><input type="date" name="akhir" value="{{ akhir }}"></div><button class="btn primary">Tampilkan</button><a class="btn" href="{{ url_for('laporan') }}">Reset</a></form></div>
-<div class="stat"><span>Total pendapatan (Selesai/Diambil)</span><b>Rp {{ "{:,.0f}".format(total) }}</b></div>
-<div class="panel"><h2>Rincian Laporan</h2><div class="scroll"><table><tr><th>ID</th><th>Tanggal</th><th>Pelanggan</th><th>Layanan</th><th>Berat</th><th>Total</th></tr>
-{% for r in laporan %}<tr><td>#{{ r.id }}</td><td>{{ r.tanggal.strftime('%d-%m-%Y') }}</td><td>{{ r.nama_pelanggan }}</td><td>{{ r.nama_layanan }}</td><td>{{ r.berat_kg }} kg</td><td>Rp {{ "{:,.0f}".format(r.total_harga) }}</td></tr>{% else %}<tr><td colspan="6">Tidak ada data laporan.</td></tr>{% endfor %}</table></div></div>{% endblock %}
